@@ -64,16 +64,6 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
         length => length as usize,
     };
 
-    let mut payload = vec![0; payload_length];
-    if stream.read_exact(&mut payload).is_err() {
-        return None; // Connection closed
-    }
-
-    // Debugging statements
-    println!("Header: {:?}", header);
-    println!("Payload Length: {}", payload_length);
-    println!("Payload Masked: {}", String::from_utf8_lossy(&payload));
-
     // Handle masking if the Mask bit is set
     let mut masking_key = [0; 4];
 
@@ -81,19 +71,27 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
         if stream.read_exact(&mut masking_key).is_err() {
             return None; // Connection closed
         }
+    }
 
+    let mut payload = vec![0; payload_length];
+    if stream.read_exact(&mut payload).is_err() {
+        return None; // Connection closed
+    }
+
+    if (header[1] & 0b1000_0000) != 0 {
         // Unmask the payload
         for (i, byte) in payload.iter_mut().enumerate() {
             *byte ^= masking_key[i % 4];
         }
     }
 
-    println!("Payload Unmasked: {}", String::from_utf8_lossy(&payload));
+    // Debugging statements
+    println!("Header: {:?}", header);
+    println!("Payload Length: {}", payload_length);
+    println!("Payload Masked: {}", String::from_utf8_lossy(&payload));
 
-    println!("RAW: ");
-    for e in &payload {
-        println!("{:02X}",e);
-    }
+
+
     let message = String::from_utf8_lossy(&payload).into_owned();
     Some(message)
 }

@@ -4,6 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 
 mod utils;
+mod threads
 
 
 // handles http upgrade handle to initiate socket connection

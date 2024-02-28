@@ -54,12 +54,12 @@ fn send_websocket_message(mut stream: &TcpStream, message: &str) {
 //
 // Returns:
 // message - decoded data recived from client
-fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
+fn recive_websocket_message(mut stream: &TcpStream) -> Result<String, &str> {
     // First 2 bytes are frame's header
     // The 2nd one contains information about payload length
     let mut header = [0;2];
     if stream.read_exact(&mut header).is_err() {
-        return None; // Connection closed
+        return Err("Could not read header"); // Connection closed
     }
 
     // Length is determined by checking if given in header len is <126 | 126 | 127
@@ -68,7 +68,7 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
             // Extended payload length using the next 2 bytes
             let mut extended_payload_length_bytes = [0; 2];
             if stream.read_exact(&mut extended_payload_length_bytes).is_err() {
-                return None; // Connection closed
+                return Err("Could not read payload length"); // Connection closed
             }
             u16::from_be_bytes(extended_payload_length_bytes) as usize
         }
@@ -76,7 +76,7 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
             // Extended payload length using the next 8 bytes
             let mut extended_payload_length_bytes = [0; 8];
             if stream.read_exact(&mut extended_payload_length_bytes).is_err() {
-                return None; // Connection closed
+                return Err("Could not read payload length"); // Connection closed
             }
             u64::from_be_bytes(extended_payload_length_bytes) as usize
         }
@@ -88,14 +88,14 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
     // Handle masking if the Mask bit is set
     if (header[1] & 0b1000_0000) != 0 {
         if stream.read_exact(&mut masking_key).is_err() {
-            return None; // Connection closed
+            return Err("Could not read mask"); // Connection closed
         }
     }
 
     // Read payload data
     let mut payload = vec![0; payload_length];
     if stream.read_exact(&mut payload).is_err() {
-        return None; // Connection closed
+        return Err("Could not read payload data"); // Connection closed
     }
 
     // If mask is enabled, decode the data wtih previously read key
@@ -107,9 +107,11 @@ fn recive_websocket_message(mut stream: &TcpStream) -> Option<String> {
     }
 
     // Convert message to readble utf8 format
-    // If characters are unreadable no error is thrown
-    let message = String::from_utf8_lossy(&payload).into_owned();
-    Some(message)
+    let message = String::from_utf8(payload);
+    match message {
+        Ok(msg) => { return Ok(msg) }
+        Err(_err) => { return Err("Could not read message") }
+    };
 }
 
 // Infinity loop that continues handling incoming requests
@@ -125,11 +127,11 @@ fn handle_connection(stream: &mut TcpStream) {
     loop {
         let message = recive_websocket_message(&stream);
         match message {
-            Some(msg) => {
+            Ok(msg) => {
                 println!("Recived message: {}", msg);
             }
-            None => {
-                println!("Ending connection");
+            Err(err) => {
+                println!("Ending connection, error: {}", err);
                 break
             }
         }

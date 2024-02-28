@@ -1,5 +1,5 @@
 use sha1::{Digest, Sha1};
-use base64::encode;
+use base64;
 
 
 // Calculates key that server needs for response by using server's GUID
@@ -18,7 +18,7 @@ pub fn calculate_accept_key(key: &str) -> String {
     let combined_key = format!("{key}{GUID}");
     let key_bytes = combined_key.as_bytes();
 
-    let sha1_hash = sha1::Sha1::digest(key_bytes);
+    let sha1_hash = Sha1::digest(key_bytes);
 
     // Every key needs to be base64 encoded
     base64::encode(sha1_hash)

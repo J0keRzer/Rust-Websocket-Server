@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 
 mod utils;
-mod threads
+mod threads;
 
 
 // handles http upgrade handle to initiate socket connection
@@ -137,6 +137,8 @@ fn handle_connection(stream: &mut TcpStream) {
 }
 
 fn main() {
+    let pool = threads::ThreadPool::new(4);
+
     // localhost on port 8000
     let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
     println!("WebSocket server listening on: ws://127.0.0.1:8000");
@@ -145,7 +147,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) =>  {
-                handle_connection(&mut stream);
+                pool.execute(move || {
+                    handle_connection(&mut stream);
+                })
             }
             Err(e) => {
                 println!("Error accepting connection: {}", e);

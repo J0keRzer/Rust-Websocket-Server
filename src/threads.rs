@@ -11,14 +11,14 @@ use std::{
 // Requires size to be given when created
 pub struct ThreadPool {
     threads: Vec<Worker>,
-    sender: mpsc::Sender<Job>
+    sender: Option<mpsc::Sender<Job>>
 }
 
 // It is a smart pointer to function that:
 // - will be executed only once
 // - will be sent through threads
 // - has lifetime of the program
-type Job = Box<dyn FnOnce() + Send + 'static>
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 impl ThreadPool {
     // Create wanted amount of workers and prepare them
@@ -43,7 +43,10 @@ impl ThreadPool {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
 
-        ThreadPool{ workers, sender }
+        ThreadPool{ 
+            threads: workers, 
+            sender: Some(sender) 
+        }
     }
 
     // Runs given function by passing it to workers
@@ -58,7 +61,20 @@ impl ThreadPool {
 
         // Pass function(job) to workers
         // unwrap in case of an error
-        self.sender.send(job).unwrap();
+        self.sender.as_ref().unwrap().send(job).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+        for worker in &mut self.threads {
+            println!("Shutting down worker: {}", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
 
@@ -66,7 +82,7 @@ impl ThreadPool {
 // Amount of workers is declared as size argument for ThreadPool
 pub struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
@@ -74,14 +90,24 @@ impl Worker {
         let thread = thread::spawn(move || loop {
             // Take a function(job) to execute
             // Only there are jobs to be done
-            let job = receiver.lock().unwrap().recv().unwrap();
+            let message = receiver.lock().unwrap().recv();
 
-            println!("Worker {id} got a job; executing.");
-
-            // Execute function given to ThreadPool
-            job();
+            match message {
+                Ok(job) => {
+                    println!("Worker {id} got a job; executing.");
+                    // Execute function given to ThreadPool
+                    job();
+                }
+                Err(_) => {
+                    println!("Worker {id} disconnected; shutting down.");
+                    break;
+                }
+            }
         });
 
-        Woker{ id, thread }
+        Worker{ 
+            id: id, 
+            thread: Some(thread) 
+        }
     }
 }
